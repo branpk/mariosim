@@ -103,7 +103,6 @@ typedef struct {
 typedef struct {
   FILE *file;
   Location loc;
-  char **funcNames;
 
   int curChar;
   int nextChar;
@@ -433,29 +432,19 @@ static OlValue *parseValue(ParseCxt *p) {
   p->curTok = NULL;
   nextToken(p);
 
-  if (v->type == ol_ident) {
-    int isFunc = 0;
-    for (char **funcName = p->funcNames; *funcName != NULL; funcName++) {
-      if (strcmp(v->ident, *funcName) == 0)
-        isFunc = 1;
-    }
+  if (isSymbol(p, "(")) {
+    eatSymbol(p);
 
-    if (isFunc) {
-      if (!isSymbol(p, "("))
-        parseError(&p->curTok->loc, "Expected (, found %s", tokenStr(p->curTok));
-      eatSymbol(p);
+    OlValue *vc = (OlValue *) allocate(sizeof(OlValue));
+    vc->type = ol_call;
+    vc->call.func = v;
+    vc->call.args = parseBlock(p);
 
-      OlValue *vc = (OlValue *) allocate(sizeof(OlValue));
-      vc->type = ol_call;
-      vc->call.func = v;
-      vc->call.args = parseBlock(p);
+    if (!isSymbol(p, ")"))
+      parseError(&p->curTok->loc, "Expected ), found %s", tokenStr(p->curTok));
+    eatSymbol(p);
 
-      if (!isSymbol(p, ")"))
-        parseError(&p->curTok->loc, "Expected ), found %s", tokenStr(p->curTok));
-      eatSymbol(p);
-
-      return vc;
-    }
+    return vc;
   }
 
   return v;
@@ -504,7 +493,7 @@ static OlBlock *parseBlock(ParseCxt *p) {
 }
 
 
-OlBlock *ol_parseFile(char *filename, char **funcNames) {
+OlBlock *ol_parseFile(char *filename) {
   char *nullFuncName = NULL;
 
   ParseCxt *p = (ParseCxt *) allocate(sizeof(ParseCxt));
@@ -515,8 +504,6 @@ OlBlock *ol_parseFile(char *filename, char **funcNames) {
   p->loc.filename = filename;
   p->loc.lineNum = 1;
   p->loc.colNum = 1;
-
-  p->funcNames = funcNames == NULL ? &nullFuncName : funcNames;
 
   p->curChar = fgetc(p->file);
   p->nextChar = fgetc(p->file);
@@ -609,11 +596,25 @@ char *ol_valueStr(OlValue *v) {
     }
 
   case ol_call:
-    return "<call>";
+    return ol_valueStr(v->call.func);
 
   case ol_block:
     return "<block>";
   }
+}
+
+
+int ol_getNumFields(OlBlock *b) {
+  int num = 0;
+  for (OlField *f = b->head; f != NULL; f = f->next) {
+    num += 1;
+  }
+  return num;
+}
+
+
+int ol_isIdent(OlValue *v, char *ident) {
+  return v != NULL && v->type == ol_ident && strcmp(v->ident, ident) == 0;
 }
 
 
@@ -694,7 +695,7 @@ float ol_checkFieldFloat(OlBlock *b, char *ident) {
 
   switch (v->type) {
   case ol_dec:
-    return (float) v->dec;
+    return (float) (int) v->dec;
 
   case ol_hex:
     u.i = (uint32_t) v->hex;
@@ -721,6 +722,60 @@ OlBlock *ol_checkFieldArray(OlBlock *b, char *ident, OlValueType types) {
   }
 
   return a;
+}
+
+
+void ol_checkNumArgs(OlValue *c, int expected, int allowNamed) {
+  if (ol_getNumFields(c->call.args) != expected)
+    error("Wrong number of arguments to %s (expected %d)", ol_valueStr(c->call.func), expected);
+
+  if (!allowNamed) {
+    for (OlField *f = c->call.args->head; f != NULL; f = f->next) {
+      if (f->key != NULL)
+        error("Unexpected named parameter '%s'", ol_valueStr(f->key));
+    }
+  }
+}
+
+
+OlValue *ol_checkArg(OlValue *c, int arg, OlValueType types) {
+  if (arg >= ol_getNumFields(c->call.args))
+    error("Not enough arguments in call to %s", ol_valueStr(c->call.func));
+
+  OlField *f = c->call.args->head;
+  for (int i = 0; i < arg; i++)
+    f = f->next;
+
+  if (f->value == NULL || !(f->value->type & types))
+    error("Invalid argument %d in call to '%s': %s",
+      arg + 1, ol_valueStr(c->call.func), ol_valueStr(f->value));
+
+  return f->value;
+}
+
+
+float ol_checkArgFloat(OlValue *c, int arg) {
+  union {
+    uint32_t i;
+    float f;
+  } u;
+
+  OlValue *v = ol_checkArg(c, arg, ol_dec | ol_hex | ol_fp);
+
+  switch (v->type) {
+  case ol_dec:
+    return (float) (int) v->dec;
+
+  case ol_hex:
+    u.i = (uint32_t) v->hex;
+    return u.f;
+
+  case ol_fp:
+    return (float) v->fp;
+
+  default:
+    return 0;
+  }
 }
 
 

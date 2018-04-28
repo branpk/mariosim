@@ -45,10 +45,11 @@ struct OlBlock {
 };
 
 
-OlBlock *ol_parseFile(char *filename, char **funcNames);
+OlBlock *ol_parseFile(char *filename);
 void ol_free(OlBlock *b);
 char *ol_valueStr(OlValue *v);
-OlValue *ol_copyValue(OlValue *v);
+int ol_getNumFields(OlBlock *b);
+int ol_isIdent(OlValue *v, char *ident);
 
 void ol_checkNoInvalidFields(OlBlock *b, char **idents);
 OlValue *ol_getField(OlBlock *b, char *ident);
@@ -56,6 +57,9 @@ OlValue *ol_checkField(OlBlock *b, char *ident, OlValueType types);
 int ol_checkFieldInt(OlBlock *b, char *ident);
 float ol_checkFieldFloat(OlBlock *b, char *ident);
 OlBlock *ol_checkFieldArray(OlBlock *b, char *ident, OlValueType types);
+void ol_checkNumArgs(OlValue *c, int expected, int allowNamed);
+OlValue *ol_checkArg(OlValue *c, int arg, OlValueType types);
+float ol_checkArgFloat(OlValue *c, int arg);
 
 OlBlock *ol_createFieldNamedArray(OlBlock *b, char *ident, char **names);
 void ol_freeNamedArray(OlBlock *b);

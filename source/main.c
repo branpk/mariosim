@@ -3,12 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "goal.h"
 #include "ol.h"
 #include "sm64/input.h"
 #include "sm64/mario.h"
 #include "sm64/surface.h"
 #include "sm64/types.h"
 
+
+Goal optGoal;
 
 struct Controller controller;
 struct Surface marioFloor;
@@ -117,11 +120,71 @@ void loadCameraState(OlBlock *in, s16 *cameraAngle) {
 }
 
 
+void loadOptGoal(OlValue *in) {
+  printf("\x1b[1mGoal:\x1b[0m\n");
+
+  if (!ol_isIdent(in->call.func, "solve"))
+    error("Cannot call '%s' here\n", ol_valueStr(in->call.func));
+  ol_checkNumArgs(in, 1, 1);
+
+  char *validGoalValues[] = {
+    "hspeed",
+    NULL
+  };
+  ol_checkNoInvalidFields(in->call.args, validGoalValues);
+
+  OlValue *g = NULL;
+
+  if ((g = ol_getField(in->call.args, "hspeed")) != NULL) {
+    printf("Optimizing for H speed\n");
+    optGoal.value = goal_value(forwardVel);
+  }
+
+  if (g == NULL)
+    error("Invalid optimization goal: %s", ol_valueStr(in));
+
+  int validGoal = 0;
+
+  if (g->type == ol_call) {
+    if (ol_isIdent(g->call.func, "max")) {
+      ol_checkNumArgs(g, 0, 0);
+      printf("Maximizing value\n");
+      optGoal.type = goal_max;
+      validGoal = 1;
+    }
+    else if (ol_isIdent(g->call.func, "maxlt")) {
+      ol_checkNumArgs(g, 1, 0);
+      optGoal.type = goal_maxlt;
+      optGoal.maxlt.target = ol_checkArgFloat(g, 0);
+      printf("Maximizing value while staying less than %f\n", optGoal.maxlt.target);
+      validGoal = 1;
+    }
+    else if (ol_isIdent(g->call.func, "near")) {
+      ol_checkNumArgs(g, 1, 0);
+      optGoal.type = goal_near;
+      optGoal.near.target = ol_checkArgFloat(g, 0);
+      printf("Getting value as close to %f as possible\n", optGoal.near.target);
+      validGoal = 1;
+    }
+  }
+  else {
+    optGoal.type = goal_exact;
+    optGoal.exact.target = ol_checkArgFloat(in, 0);
+    printf("Getting an exact value of %f\n", optGoal.exact.target);
+    validGoal = 1;
+  }
+
+  if (!validGoal)
+    error("Invalid optimization goal: %s", ol_valueStr(g));
+}
+
+
 void loadState(OlBlock *in) {
   char *validFields[] = {
     "mario",
     "floor",
     "camera",
+    "input",
     NULL
   };
   ol_checkNoInvalidFields(in, validFields);
@@ -129,6 +192,12 @@ void loadState(OlBlock *in) {
   loadMarioState(ol_checkField(in, "mario", ol_block)->block, &marioState);
   loadFloorState(ol_checkField(in, "floor", ol_block)->block, &marioFloor);
   loadCameraState(ol_checkField(in, "camera", ol_block)->block, &cameraAngle);
+
+  printf("\x1b[1mStarting state:\x1b[0m\n");
+  printState();
+  printf("\n");
+
+  loadOptGoal(ol_checkField(in, "input", ol_call));
 }
 
 
@@ -153,23 +222,14 @@ int main(int argc, char **argv) {
   if (argc < 2)
     error("Expected filename");
 
-  char *funcNames[] = {
-    "solve",
-    NULL
-  };
-
-  OlBlock *file = ol_parseFile(argv[1], funcNames);
+  OlBlock *file = ol_parseFile(argv[1]);
   loadState(file);
   ol_free(file);
-
-  printf("\x1b[1mStarting state:\x1b[0m\n");
-  printState();
-  printf("\n");
 
   performStep(0, 127);
   memcpy(&marioState, &endMarioState, sizeof(struct MarioState));
 
-  printf("\x1b[1mEnding state:\x1b[0m\n");
+  printf("\n\x1b[1mEnding state:\x1b[0m\n");
   printState();
 
   return 0;
