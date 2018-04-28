@@ -25,5 +25,6 @@ typedef struct {
 } Goal;
 
 #define goal_value(x) offsetof(struct MarioState, x)
+#define state_value(m, v, t) *((t *) ((u8 *) (m) + v))
 
 #endif

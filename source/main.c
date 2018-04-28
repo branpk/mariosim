@@ -1,14 +1,15 @@
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "goal.h"
 #include "ol.h"
 #include "sm64/input.h"
 #include "sm64/mario.h"
 #include "sm64/surface.h"
 #include "sm64/types.h"
+
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 
 Goal optGoal;
@@ -33,6 +34,54 @@ void performStep(s8 rawStickX, s8 rawStickY) {
 
   setMarioInputAnalog(&endMarioState, cameraAngle);
   actCrouchSliding(&endMarioState);
+}
+
+
+int goalReached = 0;
+struct MarioState bestMarioState;
+s8 bestStickX;
+s8 bestStickY;
+
+
+int checkGoal(struct MarioState *m) {
+  switch (optGoal.type) {
+
+  case goal_exact:
+    return state_value(m, optGoal.value, f32) == optGoal.exact.target;
+
+  case goal_max:
+    if (!goalReached) return 1;
+    return state_value(m, optGoal.value, f32) >
+      state_value(&bestMarioState, optGoal.value, f32);
+
+  case goal_maxlt:
+    if (state_value(m, optGoal.value, f32) >= optGoal.maxlt.target)
+      return 0;
+    if (!goalReached) return 1;
+    return state_value(m, optGoal.value, f32) >
+      state_value(&bestMarioState, optGoal.value, f32);
+
+  case goal_near:
+    if (!goalReached) return 1;
+    return fabs(state_value(m, optGoal.value, f32) - optGoal.near.target) <
+      fabs(state_value(&bestMarioState, optGoal.value, f32) - optGoal.near.target);
+  }
+}
+
+
+void solveGoal(void) {
+  for (s32 x = -128; x <= 127; x++) {
+    for (s32 y = -128; y <= 127; y++) {
+      performStep((s8) x, (s8) y);
+
+      if (checkGoal(&endMarioState)) {
+        goalReached = 1;
+        memcpy(&bestMarioState, &endMarioState, sizeof(struct MarioState));
+        bestStickX = (s8) x;
+        bestStickY = (s8) y;
+      }
+    }
+  }
 }
 
 
@@ -198,6 +247,7 @@ void loadState(OlBlock *in) {
   printf("\n");
 
   loadOptGoal(ol_checkField(in, "input", ol_call));
+  printf("\n");
 }
 
 
@@ -226,11 +276,17 @@ int main(int argc, char **argv) {
   loadState(file);
   ol_free(file);
 
-  performStep(0, 127);
-  memcpy(&marioState, &endMarioState, sizeof(struct MarioState));
-
-  printf("\n\x1b[1mEnding state:\x1b[0m\n");
-  printState();
+  solveGoal();
+  if (!goalReached) {
+    printf("\x1b[31mFailed to reach goal\x1b[0m\n");
+  }
+  else {
+    memcpy(&marioState, &bestMarioState, sizeof(struct MarioState));
+    printf("\x1b[1mEnding state:\x1b[0m\n");
+    printState();
+    printf("\n");
+    printf("\x1b[32mReached goal:\x1b[0m x=%d, y=%d\n", bestStickX, bestStickY);
+  }
 
   return 0;
 }
