@@ -3,6 +3,8 @@
 This project is in an immature state, as it only supports one frame of crouch sliding.
 More features will be added on request, or as the decomp progresses.
 
+You can either build the program yourself using one of the provided build scripts, or download from the releases page.
+
 This is a command line program that takes the name of an input file as argument.
 
 The input file has the following basic syntax:
