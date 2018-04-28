@@ -29,6 +29,8 @@ camera = {
 input = solve(hSpeed = maxlt(22.5))
 ```
 
+Note: `slidingYaw` is called "Yaw moving" in STROOP.
+
 Numbers can be written in hex or decimal. For floating point values, you can also use the IEEE 754 hex value.
 
 You can replace `maxlt(22.5)` with one of the following goals:
